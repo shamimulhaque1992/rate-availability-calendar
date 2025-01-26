@@ -1,7 +1,5 @@
-// Import necessary modules and components
 import { Box, Grid2 as Grid, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import RoomInventoryStatusCell from "./StatusCell";
 import AutoSizer from "react-virtualized-auto-sizer";
 import {
   VariableSizeGrid,
@@ -9,7 +7,7 @@ import {
   GridChildComponentProps,
   GridOnScrollProps,
 } from "react-window";
-import { memo, RefObject, useMemo, useRef } from "react";
+import { memo, RefObject, useMemo, useRef, useEffect } from "react";
 import { styled } from "@mui/material/styles";
 import RoomRateCell from "./RateCell";
 import RoomRateRestrictionsCell from "./RestrictionsCell";
@@ -19,6 +17,8 @@ import {
   IRoomInventory,
 } from "../(hooks)/useRoomRateAvailabilityCalendar";
 import { Person } from "@mui/icons-material";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import RoomInventoryStatusCell from "./StatusCell";
 
 // Define the props for the RoomRateAvailabilityCalendar component
 interface IProps {
@@ -27,6 +27,9 @@ interface IProps {
   index: number;
   isLastElement: boolean;
   room_category: IRoomCategoryCalender;
+  property_id: number;
+  start_date: string;
+  end_date: string;
 }
 
 // Define the data structure for the grid
@@ -47,6 +50,51 @@ export default function RoomRateAvailabilityCalendar(props: IProps) {
 
   // Store the ref in the InventoryRefs array
   props.InventoryRefs.current[props.index] = InventoryRef;
+
+  // Fetch data using infinite query
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: [
+      "property_room_calendar",
+      props.property_id,
+      props.start_date,
+      props.end_date,
+    ],
+    queryFn: async ({ pageParam = 0 }) => {
+      const url = new URL(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/property/${props.property_id}/rate-calendar/assessment`
+      );
+      url.search = new URLSearchParams({
+        start_date: props.start_date,
+        end_date: props.end_date,
+        cursor: pageParam.toString(),
+      }).toString();
+
+      const response = await fetch(url.toString());
+      return response.json();
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: 0,
+  });
+
+  // Load more data when the user scrolls to the bottom
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Memoize the grid data to avoid unnecessary re-renders
   const calendarGridData = useMemo(() => {
@@ -414,6 +462,9 @@ export default function RoomRateAvailabilityCalendar(props: IProps) {
           </AutoSizer>
         </Grid>
       </Grid>
+      <div ref={loadMoreRef} style={{ height: "20px" }}>
+        {isFetchingNextPage && "Loading more..."}
+      </div>
     </>
   );
 }

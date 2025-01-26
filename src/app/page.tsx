@@ -51,6 +51,8 @@ const StyledVariableSizeList = styled(VariableSizeList)({
   "&::-webkit-scrollbar": {
     display: "none",
   },
+  willChange: "transform",
+  overflowAnchor: "none",
 });
 
 export default function Page() {
@@ -64,33 +66,33 @@ export default function Page() {
   const calenderDatesRef = useRef<FixedSizeGrid | null>(null);
   const mainGridContainerRef = useRef<HTMLDivElement | null>(null);
   const InventoryRefs = useRef<Array<RefObject<VariableSizeGrid>>>([]);
-
+  const scrollAnimationRef = useRef<number | null>(null);
   // Handle horizontal scroll for dates
   const handleDatesScroll = useCallback(({ scrollLeft }: GridOnScrollProps) => {
-    InventoryRefs.current.forEach((ref) => {
-      if (ref.current) {
-        ref.current.scrollTo({ scrollLeft });
-      }
-    });
-    if (calenderMonthsRef.current) {
-      calenderMonthsRef.current.scrollTo(scrollLeft);
+    if (scrollAnimationRef.current) {
+      cancelAnimationFrame(scrollAnimationRef.current);
     }
+    scrollAnimationRef.current = requestAnimationFrame(() => {
+      InventoryRefs.current.forEach((ref) => {
+        ref.current?.scrollTo({ scrollLeft });
+      });
+      calenderMonthsRef.current?.scrollTo(scrollLeft);
+    });
   }, []);
 
   // Handle horizontal scroll for the entire calendar
   const handleCalenderScroll = useCallback(
     ({ scrollLeft }: GridOnScrollProps) => {
-      InventoryRefs.current.forEach((ref) => {
-        if (ref.current) {
-          ref.current.scrollTo({ scrollLeft });
-        }
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current);
+      }
+      scrollAnimationRef.current = requestAnimationFrame(() => {
+        InventoryRefs.current.forEach((ref) => {
+          ref.current?.scrollTo({ scrollLeft });
+        });
+        calenderMonthsRef.current?.scrollTo(scrollLeft);
+        calenderDatesRef.current?.scrollTo({ scrollLeft });
       });
-      if (calenderMonthsRef.current) {
-        calenderMonthsRef.current.scrollTo(scrollLeft);
-      }
-      if (calenderDatesRef.current) {
-        calenderDatesRef.current.scrollTo({ scrollLeft });
-      }
     },
     []
   );
@@ -100,33 +102,26 @@ export default function Page() {
     const { current: rootContainer } = rootContainerRef;
     if (rootContainer) {
       const handler = (e: WheelEvent) => {
-        if (
-          mainGridContainerRef.current &&
-          InventoryRefs.current &&
-          calenderMonthsRef.current &&
-          calenderDatesRef.current
-        ) {
-          // Check if deltaX is non-zero (indicating horizontal scroll)
-          if (e.deltaX !== 0) {
-            e.preventDefault();
-            let { scrollLeft } = mainGridContainerRef.current;
-            scrollLeft += e.deltaX;
+        if (e.deltaX !== 0 && mainGridContainerRef.current) {
+          e.preventDefault();
+          const scrollLeft = mainGridContainerRef.current.scrollLeft + e.deltaX;
 
-            InventoryRefs.current.forEach((ref) => {
-              if (ref.current) {
-                ref.current.scrollTo({ scrollLeft });
-              }
-            });
-
-            calenderMonthsRef.current.scrollTo(scrollLeft);
-            calenderDatesRef.current.scrollTo({ scrollLeft });
+          if (scrollAnimationRef.current) {
+            cancelAnimationFrame(scrollAnimationRef.current);
           }
+          scrollAnimationRef.current = requestAnimationFrame(() => {
+            InventoryRefs.current.forEach((ref) => {
+              ref.current?.scrollTo({ scrollLeft });
+            });
+            calenderMonthsRef.current?.scrollTo(scrollLeft);
+            calenderDatesRef.current?.scrollTo({ scrollLeft });
+          });
         }
       };
-      rootContainer.addEventListener("wheel", handler);
+      rootContainer.addEventListener("wheel", handler, { passive: false });
       return () => rootContainer.removeEventListener("wheel", handler);
     }
-  });
+  }, []);
 
   // State for calendar dates and months
   const [calenderDates, setCalenderDates] = useState<Array<dayjs.Dayjs>>([]);
@@ -166,13 +161,8 @@ export default function Page() {
   });
 
   // Component to render each month row in the calendar
-  const MonthRow: React.FC<ListChildComponentProps> = memo(function MonthRowFC({
-    index,
-    style,
-  }) {
-    const month = calenderMonths[index][0];
-
-    return (
+  const MonthRow = memo(
+    ({ index, style }: ListChildComponentProps) => (
       <Box style={style}>
         <Box
           sx={{
@@ -184,28 +174,19 @@ export default function Page() {
             borderColor: theme.palette.divider,
           }}
         >
-          <Box
-            component="span"
-            sx={{
-              position: "sticky",
-              left: 2,
-              zIndex: 1,
-            }}
-          >
-            {month}
+          <Box component="span" sx={{ position: "sticky", left: 2, zIndex: 1 }}>
+            {calenderMonths[index][0]}
           </Box>
         </Box>
       </Box>
-    );
-  },
-  areEqual);
+    ),
+    areEqual
+  );
+  MonthRow.displayName = "MonthRow";
 
   // Component to render each date row in the calendar
-  const DateRow: React.FC<GridChildComponentProps> = memo(function DateRowFC({
-    columnIndex,
-    style,
-  }) {
-    return (
+  const DateRow = memo(
+    ({ columnIndex, style }: GridChildComponentProps) => (
       <Box style={style}>
         <Box
           sx={{
@@ -218,14 +199,43 @@ export default function Page() {
             borderColor: theme.palette.divider,
           }}
         >
-          <Box>{calenderDates[columnIndex].format("ddd")}</Box>
-          <Box>{calenderDates[columnIndex].format("DD")}</Box>
+          <div>{calenderDates[columnIndex].format("ddd")}</div>
+          <div>{calenderDates[columnIndex].format("DD")}</div>
         </Box>
       </Box>
-    );
-  },
-  areEqual);
+    ),
+    areEqual
+  );
+  DateRow.displayName = "DateRow";
 
+  // Infinite scroll logic
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0].isIntersecting &&
+          room_calendar.hasNextPage &&
+          !room_calendar.isFetchingNextPage
+        ) {
+          room_calendar.fetchNextPage();
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [
+    room_calendar.hasNextPage,
+    room_calendar.isFetchingNextPage,
+    room_calendar.fetchNextPage,
+  ]);
+  const MemoizedRoomCalendar = memo(RoomRateAvailabilityCalendar);
   return (
     <Container sx={{ backgroundColor: "#EEF2F6" }}>
       <Navbar />
@@ -298,13 +308,14 @@ export default function Page() {
                   <StyledVariableSizeList
                     height={19}
                     width={width}
-                    itemCount={calenderMonths.length}
+                    itemCount={calenderMonths?.length}
                     itemSize={(index: number) => {
                       const no_of_days = calenderMonths[index][1];
                       return no_of_days * 74;
                     }}
                     layout="horizontal"
                     ref={calenderMonthsRef}
+                    itemData={{ months: calenderMonths, theme }}
                   >
                     {MonthRow}
                   </StyledVariableSizeList>
@@ -341,7 +352,7 @@ export default function Page() {
                   <FixedSizeGrid
                     height={height}
                     width={width}
-                    columnCount={calenderDates.length}
+                    columnCount={calenderDates?.length}
                     columnWidth={74}
                     rowCount={1}
                     rowHeight={37}
@@ -357,19 +368,26 @@ export default function Page() {
           </Grid>
 
           {room_calendar.isSuccess
-            ? room_calendar.data.data.room_categories.map(
-                (room_category, key) => (
-                  <RoomRateAvailabilityCalendar
-                    key={key}
+            ? room_calendar.data?.pages?.map((page, pageIndex) =>
+                page.room_categories.map((room_category, key) => (
+                  <MemoizedRoomCalendar
+                    key={`${pageIndex}-${key}`}
                     index={key}
                     InventoryRefs={InventoryRefs}
                     isLastElement={
-                      key === room_calendar.data.data.room_categories.length - 1
+                      pageIndex === room_calendar.data.pages.length - 1 &&
+                      key === page.room_categories.length - 1
                     }
                     room_category={room_category}
                     handleCalenderScroll={handleCalenderScroll}
+                    property_id={propertyId}
+                    start_date={watchedDateRange[0]!.format("YYYY-MM-DD")}
+                    end_date={(watchedDateRange[1]
+                      ? watchedDateRange[1]
+                      : watchedDateRange[0]!.add(2, "month")
+                    ).format("YYYY-MM-DD")}
                   />
-                )
+                ))
               )
             : null}
           {room_calendar.isLoading && (
@@ -384,6 +402,21 @@ export default function Page() {
               <CircularProgress />
             </Box>
           )}
+          <div ref={loadMoreRef} style={{ height: "20px" }}>
+            {room_calendar.isFetchingNextPage && (
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  height: "100%",
+                  width: "100%",
+                }}
+              >
+                <CircularProgress />
+              </Box>
+            )}
+          </div>
         </Card>
       </Box>
       <Box
