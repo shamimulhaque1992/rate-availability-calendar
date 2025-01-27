@@ -120,3 +120,173 @@ You can find a working Postman collection for this API [here](https://www.postma
 - Feel free to reach out if you have any questions or need further clarification on the requirements.
 
 Good luck, and we look forward to reviewing your implementation!
+
+
+
+# Updated Documentation and Changelog by - Khandoker Shamimul Haque
+
+## Calendar Infinite Scrolling and Optimization
+
+This document provides a detailed overview of the changes made to the calendar functionality, focusing on infinite scrolling, performance improvements, and maintainability.
+
+---
+
+## Changes Made
+
+### 1. Styling Enhancements
+- **Added Performance Optimizations**:
+  - Applied `willChange: "transform"` and `overflowAnchor: "none"` to the `StyledVariableSizeList` to improve rendering performance and prevent unwanted scroll anchoring behavior.
+
+---
+
+### 2. Scroll Animation Optimization
+- **Smooth Scrolling**:
+  - Introduced `scrollAnimationRef` using `useRef<number | null>(null)` to manage animations.
+  - Replaced direct scroll updates with `requestAnimationFrame` in `handleDatesScroll` and `handleCalenderScroll` to reduce jank and enhance performance.
+  - Implemented `cancelAnimationFrame` to cancel pending animations before starting new ones.
+
+---
+
+### 3. Infinite Query Implementation
+- **Transition to Infinite Queries**:
+  - Replaced `useQuery` with `useInfiniteQuery` from `@tanstack/react-query` to support pagination and infinite scrolling.
+  - Set `initialPageParam` to `0` to start pagination from the first page.
+
+- **Added `pageParam` Handling**:
+  - Introduced `pageParam` in the `queryFn` to handle pagination logic.
+  - Defaulted `pageParam` to `0` when undefined.
+  - Derived the `cursor` from `pageParam` and converted it to a string for API compatibility.
+
+- **Implemented `getNextPageParam`**:
+  - Used `getNextPageParam` to fetch subsequent pages via the `nextCursor` returned by the API.
+
+- **Updated Query Key**:
+  - Modified the `queryKey` to include parameters for improved caching and refetching behavior.
+
+---
+
+### 4. Infinite Scroll Logic
+- **IntersectionObserver Integration**:
+  - Added infinite scrolling using `IntersectionObserver` to detect when users reach the bottom of the calendar.
+  - Introduced `loadMoreRef` to trigger `fetchNextPage` when the last element becomes visible.
+
+---
+
+### 5. Pagination Handling for Room Categories
+- **Dynamic Rendering**:
+  - Updated the `room_calendar` rendering logic to map over paginated data using `room_calendar.data?.pages`.
+  - Added unique composite keys (`${pageIndex}-${key}`) for `MemoizedRoomCalendar` components to improve reconciliation.
+  - Adjusted `isLastElement` to determine if the current room category is the last element in the last page.
+
+---
+
+### 6. Memoization of Components
+- **Improved Component Performance**:
+  - Memoized `MonthRow` and `DateRow` components to prevent unnecessary re-renders.
+  - Added `displayName` for better debugging in React DevTools.
+  - Wrapped `RoomRateAvailabilityCalendar` in `memo` for similar performance gains.
+
+---
+
+### 7. Error Handling
+- **API Response Validation**:
+  - Added validation to ensure the API response contains the `room_categories` field.
+  - Throws an error if the response is invalid to prevent unexpected runtime issues.
+
+---
+
+### Key Additions
+1. **Scroll Animation**:
+   - Enhanced user experience with smooth scrolling using `requestAnimationFrame`.
+
+2. **Infinite Query**:
+   - Supported pagination using `@tanstack/react-query`.
+
+3. **Memoization**:
+   - Improved performance by memoizing components.
+
+4. **Error Handling**:
+   - Validated API responses for robust error prevention.
+
+---
+
+## Instructions for Future Developers
+
+### Maintaining Infinite Scrolling Functionality
+1. **API Integration**:
+   - Ensure the API returns a `nextCursor` field for pagination.
+   - Update `getNextPageParam` logic if the API pagination format changes.
+
+2. **Query Key Management**:
+   - Update the `queryKey` if new parameters are introduced or existing ones are modified to ensure proper caching.
+
+3. **IntersectionObserver**:
+   - Adjust the `loadMoreRef` logic if the component structure changes.
+   - Test the `fetchNextPage` trigger regularly to confirm seamless data loading.
+
+4. **Error Handling**:
+   - Enhance validation logic if the API introduces new fields or changes response structure.
+
+---
+
+### Extending Infinite Scrolling
+1. **Add Loading Indicators**:
+   - Introduce spinners or skeleton loaders to indicate data fetching during scrolling.
+
+2. **Dynamic Threshold**:
+   - Adjust the `IntersectionObserver` threshold for different datasets or use cases.
+
+3. **Scroll Position Persistence**:
+   - Preserve the user's scroll position when navigating away and returning to the calendar.
+
+4. **Testing**:
+   - Write unit tests to cover:
+     - `fetchNextPage` functionality.
+     - `IntersectionObserver` triggering logic.
+     - Validation for `room_categories` in API responses.
+
+5. **Batching Requests**:
+   - If performance becomes an issue, implement batching to prefetch multiple pages.
+
+---
+
+## Example Usage
+
+Below is an example of the infinite scrolling setup with `useInfiniteQuery`:
+
+```typescript
+const fetchRoomCalendar = async ({ pageParam = 0 }) => {
+  const response = await fetch(`/api/room-calendar?cursor=${pageParam}`);
+  const data = await response.json();
+
+  if (!data.room_categories) {
+    throw new Error('Invalid API response: room_categories field is missing');
+  }
+
+  return data;
+};
+
+const useRoomCalendar = () => {
+  return useInfiniteQuery({
+    queryKey: ['roomCalendar'],
+    queryFn: fetchRoomCalendar,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: 0,
+  });
+};
+
+const CalendarComponent = () => {
+  const { data, fetchNextPage, hasNextPage } = useRoomCalendar();
+
+  return (
+    <div>
+      {data?.pages.map((page, pageIndex) =>
+        page.room_categories.map((category, key) => (
+          <MemoizedRoomCalendar key={`${pageIndex}-${key}`} {...category} />
+        ))
+      )}
+      <div ref={loadMoreRef} />
+    </div>
+  );
+};
+```
