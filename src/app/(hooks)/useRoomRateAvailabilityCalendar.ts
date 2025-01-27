@@ -55,10 +55,12 @@ interface IResponse {
 export default function useRoomRateAvailabilityCalendar(params: IParams) {
   return useInfiniteQuery<IResponse, Error>({
     queryKey: ["property_room_calendar", params], // Unique query key
-    queryFn: async (context: QueryFunctionContext<readonly unknown[], unknown>) => {
-      // Explicitly type pageParam as number
-      const pageParam = context.pageParam ?? 0; // Default to 0 if pageParam is undefined
-      const cursor = pageParam?.toString(); // Convert to string for the URL
+    queryFn: async (
+      context: QueryFunctionContext<readonly unknown[], unknown>
+    ) => {
+      // Type assertion: Tell TypeScript that pageParam is a number
+      const pageParam = context.pageParam as number;
+      const cursor = pageParam.toString(); // Convert to string for the URL
 
       // Construct the URL with query parameters
       const url = new URL(
