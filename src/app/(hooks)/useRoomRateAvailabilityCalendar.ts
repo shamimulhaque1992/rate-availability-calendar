@@ -1,4 +1,3 @@
-// src/app/(components)/Page.tsx
 import { useInfiniteQuery, QueryFunctionContext } from "@tanstack/react-query";
 import Fetch from "@/utils/Fetch";
 import { Dayjs } from "dayjs";
@@ -54,9 +53,13 @@ interface IResponse {
 
 // Custom hook to fetch room rate availability calendar data with infinite scrolling
 export default function useRoomRateAvailabilityCalendar(params: IParams) {
-  return useInfiniteQuery<IResponse>({
+  return useInfiniteQuery<IResponse, Error>({
     queryKey: ["property_room_calendar", params], // Unique query key
-    queryFn: async ({ pageParam = 0 }: QueryFunctionContext) => {
+    queryFn: async (context: QueryFunctionContext<readonly unknown[], unknown>) => {
+      // Explicitly type pageParam as number
+      const pageParam = context.pageParam ?? 0; // Default to 0 if pageParam is undefined
+      const cursor = pageParam.toString(); // Convert to string for the URL
+
       // Construct the URL with query parameters
       const url = new URL(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/property/${params.property_id}/rate-calendar/assessment`
@@ -65,7 +68,7 @@ export default function useRoomRateAvailabilityCalendar(params: IParams) {
       url.search = new URLSearchParams({
         start_date: params.start_date,
         end_date: params.end_date,
-        cursor: pageParam.toString(), // Use cursor for pagination
+        cursor, // Use cursor for pagination
       }).toString();
 
       // Fetch data from the API
