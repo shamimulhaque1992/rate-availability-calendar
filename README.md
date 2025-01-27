@@ -121,7 +121,7 @@ You can find a working Postman collection for this API [here](https://www.postma
 
 Good luck, and we look forward to reviewing your implementation!
 
-
+--------------------------------------------------------------------------
 
 # Updated Documentation and Changelog by - Khandoker Shamimul Haque
 
