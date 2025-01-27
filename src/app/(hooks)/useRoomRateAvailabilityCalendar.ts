@@ -58,7 +58,7 @@ export default function useRoomRateAvailabilityCalendar(params: IParams) {
     queryFn: async (context: QueryFunctionContext<readonly unknown[], unknown>) => {
       // Explicitly type pageParam as number
       const pageParam = context.pageParam ?? 0; // Default to 0 if pageParam is undefined
-      const cursor = pageParam.toString(); // Convert to string for the URL
+      const cursor = pageParam?.toString(); // Convert to string for the URL
 
       // Construct the URL with query parameters
       const url = new URL(
